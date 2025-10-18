@@ -1,18 +1,584 @@
-# Build and Release Folders
-bin-debug/
-bin-release/
-[Oo]bj/
-[Bb]in/
+"""
+Project generator for: Real Estate Inventory Bot with Telegram Integration
 
-# Other files and folders
-.settings/
+This Python script *creates* the full project files (API, models, bot, README, tests) in the current directory.
 
-# Executables
-*.swf
-*.air
-*.ipa
-*.apk
+Why this approach?
+- Previously a stray plain-text line in the canvas caused a SyntaxError when the user executed the document as Python.
+- To guarantee the canvas is valid Python, this file is a *generator script* that writes all project files to disk. Running it will produce the runnable project files without any stray text errors.
 
-# Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
-# should NOT be excluded as they contain compiler settings and other important
-# information for Eclipse / Flash Builder.
+Usage:
+    python create_project.py
+
+After running, follow README.md in the generated project folder to install deps and run the API and Telegram bot.
+"""
+
+import os
+from textwrap import dedent
+
+FILES = {
+    '.gitignore': dedent('''
+        # Build and Release Folders
+        bin-debug/
+        bin-release/
+        [Oo]bj/
+        [Bb]in/
+
+        # Other files and folders
+        .settings/
+
+        # Executables
+        *.swf
+        *.air
+        *.ipa
+        *.apk
+
+        # Python
+        __pycache__/
+        *.py[cod]
+        *.pyo
+        *.pyd
+        env/
+        venv/
+        ENV/
+        .venv/
+
+        # IDEs
+        .vscode/
+        .idea/
+
+        # Database
+        *.db
+
+        # Logs
+        *.log
+    '''),
+
+    'requirements.txt': dedent('''
+        fastapi
+        uvicorn[standard]
+        SQLAlchemy
+        pydantic
+        alembic
+        python-multipart
+        requests
+        python-telegram-bot==20.7
+        pytest
+    '''),
+
+    'database.py': dedent('''
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker, declarative_base
+        import os
+
+        DATABASE_URL = os.environ.get('REAL_ESTATE_DATABASE_URL', 'sqlite:///./realestate.db')
+
+        engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        Base = declarative_base()
+    '''),
+
+    'models.py': dedent('''
+        from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime
+        from sqlalchemy.sql import func
+        from database import Base
+
+
+        class Property(Base):
+            __tablename__ = "properties"
+
+            id = Column(Integer, primary_key=True, index=True)
+            title = Column(String, index=True)
+            address = Column(String)
+            city = Column(String, index=True)
+            state = Column(String, index=True)
+            pincode = Column(String, index=True)
+            property_type = Column(String)  # e.g., 'Apartment', 'Plot', 'House', 'Commercial'
+            bedrooms = Column(Integer, nullable=True)
+            bathrooms = Column(Integer, nullable=True)
+            area_sqft = Column(Float, nullable=True)
+            price = Column(Float)
+            is_available = Column(Boolean, default=True)
+            created_at = Column(DateTime(timezone=True), server_default=func.now())
+            updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    '''),
+
+    'schemas.py': dedent('''
+        from pydantic import BaseModel
+        from typing import Optional
+
+
+        class PropertyBase(BaseModel):
+            title: str
+            address: str
+            city: str
+            state: str
+            pincode: str
+            property_type: str
+            bedrooms: Optional[int] = None
+            bathrooms: Optional[int] = None
+            area_sqft: Optional[float] = None
+            price: float
+
+
+        class PropertyCreate(PropertyBase):
+            pass
+
+
+        class PropertyUpdate(BaseModel):
+            title: Optional[str]
+            address: Optional[str]
+            city: Optional[str]
+            state: Optional[str]
+            pincode: Optional[str]
+            property_type: Optional[str]
+            bedrooms: Optional[int]
+            bathrooms: Optional[int]
+            area_sqft: Optional[float]
+            price: Optional[float]
+            is_available: Optional[bool]
+
+
+        class PropertyOut(PropertyBase):
+            id: int
+            is_available: bool
+
+            class Config:
+                orm_mode = True
+    '''),
+
+    'crud.py': dedent('''
+        from sqlalchemy.orm import Session
+        import models, schemas
+
+
+        def get_property(db: Session, property_id: int):
+            return db.query(models.Property).filter(models.Property.id == property_id).first()
+
+
+        def list_properties(db: Session, skip: int = 0, limit: int = 100, available_only: bool = False):
+            q = db.query(models.Property)
+            if available_only:
+                q = q.filter(models.Property.is_available == True)
+            return q.offset(skip).limit(limit).all()
+
+
+        def create_property(db: Session, property_in: schemas.PropertyCreate):
+            db_obj = models.Property(**property_in.dict())
+            db.add(db_obj)
+            db.commit()
+            db.refresh(db_obj)
+            return db_obj
+
+
+        def update_property(db: Session, db_obj: models.Property, updates: schemas.PropertyUpdate):
+            for field, value in updates.dict(exclude_unset=True).items():
+                setattr(db_obj, field, value)
+            db.add(db_obj)
+            db.commit()
+            db.refresh(db_obj)
+            return db_obj
+
+
+        def mark_sold(db: Session, db_obj: models.Property):
+            db_obj.is_available = False
+            db.add(db_obj)
+            db.commit()
+            db.refresh(db_obj)
+            return db_obj
+
+
+        def delete_property(db: Session, db_obj: models.Property):
+            db.delete(db_obj)
+            db.commit()
+            return True
+    '''),
+
+    'main.py': dedent('''
+        from fastapi import FastAPI, Depends, HTTPException
+        from sqlalchemy.orm import Session
+        import models, schemas, crud
+        from database import SessionLocal, engine, Base
+
+        # Create DB tables
+        Base.metadata.create_all(bind=engine)
+
+        app = FastAPI(title="Real Estate Inventory Bot API")
+
+
+        # Dependency
+        def get_db():
+            db = SessionLocal()
+            try:
+                yield db
+            finally:
+                db.close()
+
+
+        @app.post("/properties/", response_model=schemas.PropertyOut)
+        def create_property(property_in: schemas.PropertyCreate, db: Session = Depends(get_db)):
+            return crud.create_property(db, property_in)
+
+
+        @app.get("/properties/", response_model=list[schemas.PropertyOut])
+        def list_properties(skip: int = 0, limit: int = 100, available_only: bool = False, db: Session = Depends(get_db)):
+            return crud.list_properties(db, skip, limit, available_only)
+
+
+        @app.get("/properties/{property_id}", response_model=schemas.PropertyOut)
+        def get_property(property_id: int, db: Session = Depends(get_db)):
+            p = crud.get_property(db, property_id)
+            if not p:
+                raise HTTPException(status_code=404, detail="Property not found")
+            return p
+
+
+        @app.patch("/properties/{property_id}", response_model=schemas.PropertyOut)
+        def update_property(property_id: int, updates: schemas.PropertyUpdate, db: Session = Depends(get_db)):
+            p = crud.get_property(db, property_id)
+            if not p:
+                raise HTTPException(status_code=404, detail="Property not found")
+            return crud.update_property(db, p, updates)
+
+
+        @app.post("/properties/{property_id}/sell", response_model=schemas.PropertyOut)
+        def sell_property(property_id: int, db: Session = Depends(get_db)):
+            p = crud.get_property(db, property_id)
+            if not p:
+                raise HTTPException(status_code=404, detail="Property not found")
+            return crud.mark_sold(db, p)
+
+
+        @app.delete("/properties/{property_id}")
+        def delete_property(property_id: int, db: Session = Depends(get_db)):
+            p = crud.get_property(db, property_id)
+            if not p:
+                raise HTTPException(status_code=404, detail="Property not found")
+            crud.delete_property(db, p)
+            return {"ok": True}
+    '''),
+
+    'bot_cli.py': dedent('''
+        import requests
+
+        API = "http://127.0.0.1:8000"
+
+        MENU = ("Real Estate Bot - Commands\n"
+                "1. List available\n"
+                "2. Add property\n"
+                "3. Update property\n"
+                "4. Mark sold\n"
+                "5. Get property\n"
+                "6. Delete property\n"
+                "0. Exit\n"
+                "Choose: ")
+
+
+        def list_available():
+            r = requests.get(API + "/properties/?available_only=true")
+            print(r.json())
+
+
+        def add_property():
+            data = {}
+            data['title'] = input('Title: ')
+            data['address'] = input('Address: ')
+            data['city'] = input('City: ')
+            data['state'] = input('State: ')
+            data['pincode'] = input('Pincode: ')
+            data['property_type'] = input('Type (Apartment/House/Plot): ')
+            data['bedrooms'] = int(input('Bedrooms (or 0): '))
+            data['bathrooms'] = int(input('Bathrooms (or 0): '))
+            data['area_sqft'] = float(input('Area sqft (or 0): '))
+            data['price'] = float(input('Price: '))
+
+            r = requests.post(API + "/properties/", json=data)
+            print(r.status_code, r.text)
+
+
+        def update_property():
+            pid = input('Property ID: ')
+            updates = {}
+            print('Leave blank to skip a field')
+            for field in ['title','address','city','state','pincode','property_type','bedrooms','bathrooms','area_sqft','price','is_available']:
+                v = input(field + ': ')
+                if v != '':
+                    if field in ['bedrooms','bathrooms']:
+                        updates[field] = int(v)
+                    elif field in ['area_sqft','price']:
+                        updates[field] = float(v)
+                    elif field == 'is_available':
+                        updates[field] = v.lower() in ['true','1','yes','y']
+                    else:
+                        updates[field] = v
+            r = requests.patch(API + f"/properties/{pid}", json=updates)
+            print(r.status_code, r.text)
+
+
+        def mark_sold():
+            pid = input('Property ID to mark sold: ')
+            r = requests.post(API + f"/properties/{pid}/sell")
+            print(r.status_code, r.text)
+
+
+        def get_prop():
+            pid = input('Property ID: ')
+            r = requests.get(API + f"/properties/{pid}")
+            print(r.status_code, r.text)
+
+
+        def delete_prop():
+            pid = input('Property ID to delete: ')
+            r = requests.delete(API + f"/properties/{pid}")
+            print(r.status_code, r.text)
+
+
+        def main():
+            while True:
+                choice = input(MENU).strip()
+                if choice == '1':
+                    list_available()
+                elif choice == '2':
+                    add_property()
+                elif choice == '3':
+                    update_property()
+                elif choice == '4':
+                    mark_sold()
+                elif choice == '5':
+                    get_prop()
+                elif choice == '6':
+                    delete_prop()
+                elif choice == '0':
+                    break
+                else:
+                    print('Invalid')
+
+
+        if __name__ == '__main__':
+            main()
+    '''),
+
+    'telegram_bot.py': dedent('''
+        import logging
+        from telegram import Update
+        from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+        import requests
+
+        API = "http://127.0.0.1:8000"
+        BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+
+        logging.basicConfig(
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            level=logging.INFO
+        )
+
+        # --- Helper functions ---
+
+        def get_properties():
+            try:
+                r = requests.get(f"{API}/properties/?available_only=true")
+                return r.json()
+            except Exception:
+                return []
+
+
+        async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            await update.message.reply_text(
+                "🏠 Welcome to Real Estate Inventory Bot!\n\n"
+                "You can use the following commands:\n"
+                "/list - Show available properties\n"
+                "/add - Add a new property\n"
+                "/sell - Mark a property as sold\n"
+                "/help - Show this help message"
+            )
+
+
+        async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            await update.message.reply_text(
+                "Use /list, /add, /sell to manage your real estate inventory."
+            )
+
+
+        async def list_properties(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            props = get_properties()
+            if not props:
+                await update.message.reply_text("No available properties found.")
+                return
+
+            msg = "🏠 Available Properties:\n\n"
+            for p in props:
+                msg += f"#{p['id']} - {p['title']} ({p['city']})\n💰 Rs {p['price']} | {p['property_type']}\n\n"
+            await update.message.reply_text(msg)
+
+
+        async def add_property(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            await update.message.reply_text(
+                "Send details in this format:\n"
+                "Title | Address | City | State | Pincode | Type | Bedrooms | Bathrooms | Area | Price"
+            )
+            context.user_data['adding'] = True
+
+
+        async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            # Combined handler for both adding and selling
+            if context.user_data.get('adding'):
+                parts = [x.strip() for x in update.message.text.split('|')]
+                if len(parts) < 10:
+                    await update.message.reply_text("⚠️ Please enter all 10 fields correctly.")
+                    return
+
+                data = {
+                    'title': parts[0],
+                    'address': parts[1],
+                    'city': parts[2],
+                    'state': parts[3],
+                    'pincode': parts[4],
+                    'property_type': parts[5],
+                    'bedrooms': int(parts[6]),
+                    'bathrooms': int(parts[7]),
+                    'area_sqft': float(parts[8]),
+                    'price': float(parts[9])
+                }
+                try:
+                    r = requests.post(f"{API}/properties/", json=data)
+                    if r.status_code == 200:
+                        await update.message.reply_text("✅ Property added successfully!")
+                    else:
+                        await update.message.reply_text(f"❌ Failed to add property: {r.text}")
+                except Exception as e:
+                    await update.message.reply_text(f"Error: {str(e)}")
+                context.user_data['adding'] = False
+
+
+            if context.user_data.get('selling'):
+                pid = update.message.text.strip()
+                try:
+                    r = requests.post(f"{API}/properties/{pid}/sell")
+                    if r.status_code == 200:
+                        await update.message.reply_text("✅ Property marked as sold!")
+                    else:
+                        await update.message.reply_text(f"❌ Failed: {r.text}")
+                except Exception as e:
+                    await update.message.reply_text(f"Error: {str(e)}")
+                context.user_data['selling'] = False
+
+
+        async def sell_property(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            await update.message.reply_text("Send property ID to mark as sold:")
+            context.user_data['selling'] = True
+
+
+        # --- Main ---
+
+        def main():
+            app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+            app.add_handler(CommandHandler("start", start))
+            app.add_handler(CommandHandler("help", help_command))
+            app.add_handler(CommandHandler("list", list_properties))
+            app.add_handler(CommandHandler("add", add_property))
+            app.add_handler(CommandHandler("sell", sell_property))
+
+            app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+
+            print("🤖 Telegram bot running...")
+            app.run_polling()
+
+
+        if __name__ == '__main__':
+            main()
+    '''),
+
+    'README.md': dedent('''
+        # Real Estate Inventory Bot (FastAPI + Telegram)
+
+        ## Quick start
+
+        1. Create virtualenv and install requirements:
+
+           python -m venv .venv
+           source .venv/bin/activate   # (on Windows: .venv\\Scripts\\activate)
+           pip install -r requirements.txt
+
+        2. Start API:
+
+           uvicorn main:app --reload
+
+        3. Replace BOT token in telegram_bot.py and run the bot:
+
+           python telegram_bot.py
+
+        4. Use the CLI or Telegram to manage properties.
+    '''),
+
+    'tests/test_api.py': dedent('''
+        import os
+        import tempfile
+        from fastapi.testclient import TestClient
+        import pytest
+
+        # Ensure any existing DB won't interfere
+        os.environ['REAL_ESTATE_DATABASE_URL'] = 'sqlite:///:memory:'
+
+        from main import app
+
+        client = TestClient(app)
+
+
+        def test_create_list_sell_property():
+            # Create property
+            payload = {
+                'title': 'Test House',
+                'address': '123 Test Lane',
+                'city': 'TestCity',
+                'state': 'TS',
+                'pincode': '000000',
+                'property_type': 'House',
+                'bedrooms': 3,
+                'bathrooms': 2,
+                'area_sqft': 1200.0,
+                'price': 5000000.0
+            }
+            r = client.post('/properties/', json=payload)
+            assert r.status_code == 200
+            data = r.json()
+            assert data['title'] == 'Test House'
+            prop_id = data['id']
+
+            # List available
+            r = client.get('/properties/?available_only=true')
+            assert r.status_code == 200
+            items = r.json()
+            assert any(p['id'] == prop_id for p in items)
+
+            # Sell property
+            r = client.post(f'/properties/{prop_id}/sell')
+            assert r.status_code == 200
+            sold = r.json()
+            assert sold['is_available'] is False
+    '''),
+
+    'create_project_README.txt': dedent('''
+        This file was generated by the project generator script.
+        After running create_project.py, you will have the project files. To run tests:
+
+            python -m pytest -q
+
+        Note: Tests use an in-memory sqlite database via the REAL_ESTATE_DATABASE_URL env var.
+    ''')
+}
+
+
+def write_files():
+    for name, content in FILES.items():
+        folder = os.path.dirname(name)
+        if folder and not os.path.exists(folder):
+            os.makedirs(folder, exist_ok=True)
+        with open(name, 'w', encoding='utf-8') as f:
+            f.write(content)
+        print(f'Wrote {name}')
+
+
+if __name__ == '__main__':
+    write_files()
+    print('\nProject files generated. Read README.md to continue.')
