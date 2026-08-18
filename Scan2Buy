@@ -1,1 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+    <title>ScanKart</title>
+</head>
+
+<body>
+
+    <!-- =========================
+         HEADER
+    ========================== -->
+
+    <header>
+
+        <div class="logo">
+            ScanKart
+        </div>
+
+        <nav>
+            <a href="#home">Home</a>
+            <a href="#menu">Menu</a>
+            <a href="#cart">Cart</a>
+        </nav>
+
+    </header>
+
+
+    <!-- =========================
+         MAIN APP
+    ========================== -->
+
+    <main>
+
+
+        <!-- =========================
+             HOME / QR SCAN SECTION
+        ========================== -->
+
+        <section id="home">
+
+            <h1>Scan & Explore</h1>
+
+            <p>
+                Scan the QR code to explore products and services.
+            </p>
+
+            <button id="scanQR">
+                Scan QR Code
+            </button>
+
+        </section>
+
+
+        <!-- =========================
+             BUSINESS INFORMATION
+        ========================== -->
+
+        <section id="business">
+
+            <img
+                src="images/business.jpg"
+                alt="Business Image"
+            >
+
+            <h2>Sharma Restaurant</h2>
+
+            <p>
+                Delicious food and fast service
+            </p>
+
+            <p>
+                📍 Jaipur, Rajasthan
+            </p>
+
+        </section>
+
+
+        <!-- =========================
+             CATEGORIES
+        ========================== -->
+
+        <section id="categories">
+
+            <h2>Categories</h2>
+
+            <div class="categories">
+
+                <button>
+                    🍕 Food
+                </button>
+
+                <button>
+                    🥤 Drinks
+                </button>
+
+                <button>
+                    🍰 Desserts
+                </button>
+
+                <button>
+                    🛍️ Products
+                </button>
+
+                <button>
+                    🔧 Services
+                </button>
+
+            </div>
+
+        </section>
+
+
+        <!-- =========================
+             PRODUCTS / SERVICES
+        ========================== -->
+
+        <section id="menu">
+
+            <h2>Products & Services</h2>
+
+
+            <!-- PRODUCT 1 -->
+
+            <article class="product">
+
+                <img
+                    src="images/pizza.jpg"
+                    alt="Pizza"
+                >
+
+                <h3>Cheese Pizza</h3>
+
+                <p>
+                    Fresh cheese pizza
+                </p>
+
+                <strong>
+                    ₹199
+                </strong>
+
+                <button>
+                    Add to Cart
+                </button>
+
+            </article>
+
+
+            <!-- PRODUCT 2 -->
+
+            <article class="product">
+
+                <img
+                    src="images/burger.jpg"
+                    alt="Burger"
+                >
+
+                <h3>Veg Burger</h3>
+
+                <p>
+                    Fresh vegetable burger
+                </p>
+
+                <strong>
+                    ₹129
+                </strong>
+
+                <button>
+                    Add to Cart
+                </button>
+
+            </article>
+
+
+            <!-- PRODUCT 3 -->
+
+            <article class="product">
+
+                <img
+                    src="images/cold-drink.jpg"
+                    alt="Cold Drink"
+                >
+
+                <h3>Cold Drink</h3>
+
+                <p>
+                    Chilled soft drink
+                </p>
+
+                <strong>
+                    ₹50
+                </strong>
+
+                <button>
+                    Add to Cart
+                </button>
+
+            </article>
+
+        </section>
+
+
+        <!-- =========================
+             PRODUCT DETAILS
+        ========================== -->
+
+        <section id="product-details">
+
+            <img
+                src="images/pizza.jpg"
+                alt="Product"
+            >
+
+            <h2>Cheese Pizza</h2>
+
+            <p>
+                Fresh cheese pizza with vegetables.
+            </p>
+
+            <h3>
+                ₹199
+            </h3>
+
+            <label>
+                Quantity
+            </label>
+
+            <input
+                type="number"
+                value="1"
+                min="1"
+            >
+
+            <button>
+                Add to Cart
+            </button>
+
+        </section>
+
+
+        <!-- =========================
+             CART
+        ========================== -->
+
+        <section id="cart">
+
+            <h2>Your Cart</h2>
+
+            <div class="cart-item">
+
+                <h3>Cheese Pizza</h3>
+
+                <p>
+                    ₹199 × 2
+                </p>
+
+                <button>
+                    Remove
+                </button>
+
+            </div>
+
+
+            <div class="cart-total">
+
+                <h3>
+                    Total: ₹398
+                </h3>
+
+                <button>
+                    Proceed to Order
+                </button>
+
+            </div>
+
+        </section>
+
+
+        <!-- =========================
+             ORDER
+        ========================== -->
+
+        <section id="order">
+
+            <h2>Place Your Order</h2>
+
+            <form>
+
+                <label>
+                    Name
+                </label>
+
+                <input
+                    type="text"
+                    placeholder="Enter your name"
+                >
+
+
+                <label>
+                    Phone Number
+                </label>
+
+                <input
+                    type="tel"
+                    placeholder="Enter phone number"
+                >
+
+
+                <label>
+                    Table Number
+                </label>
+
+                <input
+                    type="number"
+                    placeholder="Table number"
+                >
+
+
+                <label>
+                    Order Notes
+                </label>
+
+                <textarea
+                    placeholder="Any special instructions?"
+                ></textarea>
+
+
+                <button type="submit">
+                    Place Order
+                </button>
+
+            </form>
+
+        </section>
+
+    </main>
+
+
+    <!-- =========================
+         FOOTER
+    ========================== -->
+
+    <footer>
+
+        <p>
+            © 2026 ScanKart
+        </p>
+
+    </footer>
+
+
+</body>
+</html>
